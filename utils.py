@@ -1,3 +1,5 @@
+# Or Zipori 302933833
+# Shauli Ravfogel 308046861
 import numpy as np 
 
 vocabSize = 300000
@@ -87,6 +89,7 @@ class Lidstone(object):
             else:
                 cW = self.eventCount[word]
 
+            # compute the probability 
             plid = cW + self.lambdaP
             plid /= len(self.trainset) + (self.lambdaP * vocabSize)
 
@@ -105,6 +108,7 @@ class Lidstone(object):
 
         for word in validateWordsSet:
             if (word not in self.probs):
+                # gives the probability of an unseen event
                 vProbs.append(self.probs["unseen0"])
             else:
                 vProbs.append(self.probs[word])
