@@ -1,6 +1,7 @@
 # Or Zipori 302933833
 # Shauli Ravfogel 308046861
 import numpy as np 
+from collections import Counter
 
 vocabSize = 300000
 
@@ -9,15 +10,15 @@ def fetchFile(filename):
     lines = []
     with open(filename, 'r') as f:
         lines = f.read().splitlines()
-
+    
     return lines
 
 # get list of lines and create a list of the words
 def createWordsDataSet(linelist):
     wordsDataSet = []
-    for line in linelist:
+    for i, line in enumerate(linelist):
         # ignore headers and blank lines
-        if(len(line) == 0 or line.startswith("<TRAIN", 0, 6)):
+        if(i%4 == 0 or len(line) == 0):
             continue
 
         wordsDataSet.extend(line.split())
@@ -39,9 +40,9 @@ def perplexity(probs):
     sumProps = 0
 
     for p in probs:
-        sumProps += np.log(p)
+        sumProps += np.log2(p) if p > 1e-20 else -np.inf
     
-    return -(sumProps) / n
+    return 2**(-(sumProps) / n)
 
 # create a dictionary that contains event - > count(event)
 def countEvents(wordsDataSet):
@@ -57,9 +58,9 @@ def countEvents(wordsDataSet):
 
 # Lidstone model - receives dataset(list) and lambda(scalar) as arguments
 class Lidstone(object):
-    def __init__(self, dataset, lambdaP=0.5):
+    def __init__(self, dataset, testset):
         self.wordsDataSet = createWordsDataSet(dataset)
-
+        self.testset = createWordsDataSet(testset)
         # all the events    
         self.S = list(set(self.wordsDataSet))
 
@@ -68,42 +69,44 @@ class Lidstone(object):
         self.trainset = self.wordsDataSet[:divider]
         self.validset = self.wordsDataSet[divider:]
 
-        # hyper paramater
-        self.lambdaP = lambdaP
-
         # event -> count(event)
         self.eventCount = None
 
         # probabilities
         self.probs = {}
+        self.count_probs = {}
     
     # calculate the probabilities with Lidstone 
     def train(self):
-        self.eventCount = countEvents(self.trainset)
-
-        # iterate over S
-        for word in self.S:
-            # word is not in the train set
-            if (word not in self.eventCount):
-                cW = 0
-            else:
-                cW = self.eventCount[word]
-
-            # compute the probability 
-            plid = cW + self.lambdaP
-            plid /= len(self.trainset) + (self.lambdaP * vocabSize)
-
-            self.probs[word] = plid
-
-        # for all other words in V that are not in development set
+           
+           self.word_counter = Counter()
+           for w in self.trainset:
+           
+           	self.word_counter[w] += 1
+            
+            
+    def calc_probs(self, lambdaP = 0.5): 
+    
+        probs = {}
+        
+        # compute probs for trainset words
+        
+        for w in self.trainset:
+        	
+        	probs[w] = (self.word_counter[w] + lambdaP)/(len(self.trainset) + (lambdaP * vocabSize))
+        	self.count_probs[self.word_counter[w]] = probs[w]
+        	
         diff = vocabSize - len(self.S)
+        
         for i in range(diff):
-            self.probs["unseen" + str(i)] = self.lambdaP / (len(self.trainset) + (self.lambdaP * vocabSize))
-
+           probs["unseen" + str(i)] = lambdaP / (len(self.trainset) + (lambdaP * vocabSize))        	
+        
+        self.probs = probs
+    
     # calculate the perplexity over the     
-    def validate(self):
+    def validate(self, dev = True):
         # get all the words(events) for the validation set
-        validateWordsSet = set(self.validset)
+        validateWordsSet = self.validset if dev else self.testset
         vProbs = []
 
         for word in validateWordsSet:
@@ -117,9 +120,9 @@ class Lidstone(object):
 
 # Headout model
 class Headout(object):
-    def __init__(self, dataset):
+    def __init__(self, dataset, testset):
         self.wordsDataSet = createWordsDataSet(dataset)
-
+        self.testset = createWordsDataSet(testset)
         # all the events    
         self.S = list(set(self.wordsDataSet))
         divider = round(0.5 * len(self.wordsDataSet))
@@ -130,6 +133,10 @@ class Headout(object):
 
         # probabilities
         self.probs = {}
+        
+        self.N_r = {}
+        self.t_r = {}
+        self.r_probs = {}
 
     '''
         take dictionary of event->count and return a dictionary of word buckets
@@ -176,8 +183,39 @@ class Headout(object):
                     sumCH += headoutSetCount[w]
 
             Nr = len(words)
+            self.N_r[b] = Nr
+            self.t_r[b] = sumCH
+            
             # calculate the Pheadout for r=i
             pHO = sumCH / (Nr * ShSize)
+            self.r_probs[b] = pHO
+            
             # assign the probabilities to all the words in this bucket
             for w in words:
                 self.probs[w] = pHO
+                
+    def get_N_r(self, r):
+    	
+    	return self.N_r[r] if r in self.N_r else 0
+    
+    def get_t_r(self, r):
+    
+    	return self.t_r[r] if r in self.t_r else 0
+    
+    def get_r_prob(self, r):
+    
+    	return self.r_probs[r] if r in self.r_probs else 0
+    
+    def validate(self, dev = True):
+        # get all the words(events) for the validation set
+        validateWordsSet = self.validset if dev else self.testset
+        vProbs = []
+
+        for word in validateWordsSet:
+            if (word not in self.probs):
+                # gives the probability of an unseen event
+                vProbs.append(self.probs["unseen0"])
+            else:
+                vProbs.append(self.probs[word])
+        
+        return perplexity(vProbs)
