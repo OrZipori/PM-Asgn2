@@ -34,8 +34,7 @@ def fill_table(ho_model, dev_data, test_data, best_lambda):
 
 		prob = ho_model.get_r_prob(r)
 		lidstone_prob = lidstone.count_probs[r] if r != 0 else lidstone.probs["unseen0"]
-		
-		print (lidstone_prob)
+	
 			
 		f_lambda = lidstone_prob * len(lidstone.trainset)
 		f_h = prob * held_size
@@ -47,9 +46,9 @@ def fill_table(ho_model, dev_data, test_data, best_lambda):
 	return "\n" + tbl.strip()
 
 
-def write_output(outputs):
+def write_output(outputs, output_fname):
 
-	with open("output.txt", "w") as f:
+	with open(output_fname, "w") as f:
 		
 		f.write("#Students\tOr\tZipori\t302933833\tShauli\tRavfogel\t308046861\n")
 	
@@ -130,9 +129,8 @@ def create(dev_fname, test_fname, output_fname, input_word):
 	outputs.append(ho.validate(dev = False)) # 27
 	outputs.append("L" if outputs[-1] > outputs[-2] else "H") # 28
 	
-	
 	buckets = ho.wordsToBuckets()
 	tbl = fill_table(ho, dev_data, test_data, best_lambda)
 	outputs.append(tbl)
-	print (len(outputs))
-	write_output(outputs)
+
+	write_output(outputs, output_fname)
